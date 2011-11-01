@@ -1,0 +1,193 @@
+<!DOCTYPE HTML>
+<html lang="en-US">
+<head>
+<meta charset="UTF-8">
+<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+<script type="text/javascript">
+
+window.requestAnimFrame = (function(){
+      return  window.requestAnimationFrame       || 
+              window.webkitRequestAnimationFrame || 
+              window.mozRequestAnimationFrame    || 
+              window.oRequestAnimationFrame      || 
+              window.msRequestAnimationFrame     || 
+              function(/* function */ callback, /* DOMElement */ element){
+                window.setTimeout(callback, 1000 / 60);
+              };
+    })();
+
+var canvas, ctx;
+var mouseX = 0, mouseY = 0, mouseB = 0;
+var things = [];
+var t0;
+
+function generateGradientStrip(spec, size) {
+	var cnv = document.createElement("canvas");
+	cnv.width = size;
+	cnv.height = 5;
+	var ctx = cnv.getContext("2d");
+	var grad = ctx.createLinearGradient(0, 0, size, 0);
+	for(var i = 0; i < spec.length; i++) {
+		grad.addColorStop(i / (spec.length - 1), spec[i]);
+	}
+	ctx.fillStyle = grad;
+	ctx.fillRect(0, 0, cnv.width, cnv.height);
+	var imgD = ctx.getImageData(0, 3, size, 1).data;
+	var out = [];
+	for(var i = 0; i < size * 4; i+=4) {
+		out.push("rgb(" + imgD[i] + "," + imgD[i + 1] + "," + imgD[i + 2] + ")");
+	}
+	return out;
+}
+
+var grad = generateGradientStrip(
+	//"#FF4E50 #FC913A #F9D423 #EDE574 #fffddf".split(" ")
+	["#000", "#A6026C", "#D1024E", "#FC3903", "#FC7F03", "#FFAB03"]
+	, 512);
+
+
+function rsz() {
+	if(!canvas) return;
+	canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
+}
+
+function init() {
+	console.log("hi");
+	canvas = document.getElementById("c");
+	ctx = canvas.getContext("2d");
+	rsz();
+	for(var i = 0; i < 5; i++) newThing();
+	t0 = + new Date();
+	step();//setInterval(step, 100);
+}
+
+function step() {
+	var t = +new Date();
+	var ts = ((t - t0) / 1000.0) * 2;
+	for(var i = 0; i < 18; i++) {
+		simulate(ts);
+	}
+	simulateFinal(ts);
+	draw(ts);
+	requestAnimFrame(step);
+	t0 = t;
+}
+
+function drawLine(ctx, p1, p2) {
+	ctx.beginPath();
+	ctx.moveTo(p1.x, p1.y);
+	ctx.lineTo(p2.x, p2.y);
+	ctx.stroke();
+}
+
+function rnd(a, b) {
+	return a + Math.random() * (b - a);
+}
+
+function draw(timestep) {
+	//console.log("y");
+	canvas.width = canvas.width;
+	ctx.font = "16px arial";
+	///var cl = grad[mouseX % grad.length];
+	//ctx.fillStyle = "#000";
+	//ctx.fillRect(0, 0, canvas.width, canvas.height);
+	//ctx.fillStyle = "white";
+	//ctx.fillText("(" + mouseX + "x" + mouseY + "); " + mouseB, 5, 20);
+	var maxVel = Math.max.apply(null, things.map(function(thing) { return thing.vel; }));
+	things.forEach(function(thing) {
+		//ctx.beginPath();
+		ctx.strokeStyle = grad[0 | ((thing.vel / maxVel) * grad.length)];
+		thing.trail.forEach(function(point, idx) {
+			var v = idx / thing.trail.length; //Math.max(0, Math.min(1.0, (point.vel / maxVel)));
+			ctx.strokeStyle = grad[0 | (v * grad.length)];//"white";
+			ctx.lineWidth = v * 4;
+			//ctx.lineTo(point.x, point.y);
+			drawLine(ctx, thing.trail[idx - 1] || point, point);
+			//point.x += rnd(-25, 25) * v * timestep;
+			//point.y += (1.0 - v) * timestep * 15; //rnd(-25, 25) * v * timestep;
+		});
+		//ctx.stroke();
+		//ctx.fillStyle = "white";
+		//ctx.fillRect(thing.x - 3, thing.y - 3, 6, 6);
+	});
+}
+
+function newThing() {
+	things.push({
+		x: Math.random() * canvas.width,
+		y: Math.random() * canvas.height,
+		dx: 0,
+		dy: 0,
+		dMul: 1,//rnd(0.99, 1.01),
+		bMul: 1,//rnd(0.99, 1.01),
+		trail: []
+	});
+}
+
+function simulate(ts) {
+	var dCoeff = 0.0015;
+	var bCoeff = 0.996;
+	var rr = 5;
+	if(mouseB & 1) dCoeff *= 5;
+	things.forEach(function(thing) {
+		var dMts = thing.dMul * dCoeff * ts;
+		var bMts = thing.bMul * bCoeff;
+		thing.dx -= (thing.x - mouseX) * dMts;
+		thing.dy -= (thing.y - mouseY) * dMts;
+		thing.dx *= bMts;
+		thing.dy *= bMts;
+		thing.x += (thing.dx + rnd(-rr, rr)) * ts;
+		thing.y += (thing.dy + rnd(-rr, rr)) * ts;
+		
+	});
+}
+
+function simulateFinal(ts) {
+	things.forEach(function(thing) {
+		thing.vel = (thing.dx * thing.dx) + (thing.dy * thing.dy);
+		thing.trail.push({
+			x: 		thing.x,
+			y: 		thing.y,
+			vel:	thing.vel
+		});
+		while(thing.trail.length > 300) thing.trail.shift();
+	});
+}
+
+function mouseMoveHandler(evt) {
+	mouseX = evt.clientX;
+	mouseY = evt.clientY;
+}
+
+window.addEventListener("resize", rsz);
+window.addEventListener("mousemove", mouseMoveHandler);
+window.addEventListener("touchmove", mouseMoveHandler);
+window.addEventListener("mousedown", function(evt) {
+	mouseB |= (1 << (evt.button));
+	mouseMoveHandler(evt);
+	evt.preventDefault();
+	return false;
+});
+
+window.addEventListener("mouseup", function(evt) {
+	mouseB &= ~(1 << (evt.button));
+	mouseMoveHandler(evt);
+	evt.preventDefault();
+	return false;
+});
+
+
+window.addEventListener("load", init);
+
+</script>
+<style type="text/css">
+body {margin:0;overflow:hidden;}
+#c {background: #000}
+</style>
+</head>
+<body>
+	<canvas id="c"></canvas>
+</body>
+</html>
